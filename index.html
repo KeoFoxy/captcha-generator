@@ -6,7 +6,10 @@
   <title>Captcha Renderer</title>
   <style>
     html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden}
-    #bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    #bgWrap{position:absolute;inset:0}
+    #bgImg,#bgFrame{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover}
+    #bgImg{z-index:0} /* картинка всегда сзади */
+    #bgFrame{z-index:1;background:transparent} /* если фрейм загрузится — перекроет картинку */
     .overlay{position:absolute;z-index:9999}
     .cap-wrapper{
       padding:8px;border-radius:10px;
@@ -18,22 +21,31 @@
   </style>
 </head>
 <body>
-  <img id="bg" alt="bg"/>
+  <div id="bgWrap">
+    <img id="bgImg" alt="bg"/>
+    <iframe id="bgFrame" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+  </div>
   <div class="overlay"><div class="cap-wrapper" id="cap-slot"></div></div>
 
   <script>
     (function(){
       const q = new URLSearchParams(location.search);
-      const prov = q.get('prov') || 'hcaptcha'; // 'hcaptcha' | 'turnstile' | 'recaptcha'
+      const prov = q.get('prov') || 'hcaptcha'; // 'hcaptcha' | 'turnstile' | 'recaptcha' | 'snippet'
       const size = q.get('size') || 'normal';   // 'normal'|'compact'|'auto'
       const theme = q.get('theme') || 'light';  // 'light'|'dark'
       const hl = q.get('hl') || 'en';
       const x = parseInt(q.get('x')||'80',10);
       const y = parseInt(q.get('y')||'120',10);
-      const bg = q.get('bg') || '';             // data:uri или абсолютный url разрешённых ассетов
-      const variant = q.get('variant') || 'checkbox'; // для turnstile: 'interactive'|'managed'
+      const bgUrl = q.get('bgUrl') || '';       // URL страницы для iframe
+      const bg = q.get('bg') || '';             // data:uri фолбэк-картинка
+      const variant = q.get('variant') || 'checkbox'; // для turnstile/hcaptcha вариации
+      const snippet = q.get('snippet') || '';   // имя сниппета для prov=snippet
 
-      document.getElementById('bg').src = bg;
+      const bgImg = document.getElementById('bgImg');
+      const bgFrame = document.getElementById('bgFrame');
+      if (bg) bgImg.src = bg;
+      if (bgUrl) bgFrame.src = bgUrl;
+
       const overlay = document.querySelector('.overlay');
       overlay.style.left = x+'px';
       overlay.style.top  = y+'px';
@@ -41,42 +53,50 @@
 
       const slot = document.getElementById('cap-slot');
 
-      if (prov === 'hcaptcha') {
-        const div = document.createElement('div');
-        div.className = 'h-captcha';
-        div.setAttribute('data-sitekey', 'YOUR_HCAPTCHA_SITEKEY');
-        div.setAttribute('data-theme', theme);
-        div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
-        slot.appendChild(div);
-        const s = document.createElement('script');
-        s.src = 'https://js.hcaptcha.com/1/api.js?hl=' + encodeURIComponent(hl);
-        s.async = true; s.defer = true;
-        document.body.appendChild(s);
-      } else if (prov === 'turnstile') {
-        const div = document.createElement('div');
-        div.className = 'cf-turnstile';
-        div.setAttribute('data-sitekey', variant === 'interactive'
-          ? 'YOUR_TURNSTILE_SITEKEY'   // прод-ключ, который у тебя в дашборде (не тестовый)
-          : 'YOUR_TURNSTILE_SITEKEY'); // можно завести второй ключ под другой режим
-        div.setAttribute('data-theme', theme);
-        slot.appendChild(div);
-        const s = document.createElement('script');
-        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' + encodeURIComponent(hl);
-        s.async = true; s.defer = true;
-        document.body.appendChild(s);
-      } else if (prov === 'recaptcha') {
-        // Если решишь оживить reCAPTCHA v2 checkbox на своём домене:
-        const div = document.createElement('div');
-        div.className = 'g-recaptcha';
-        div.setAttribute('data-sitekey', 'YOUR_RECAPTCHA_SITEKEY');
-        div.setAttribute('data-theme', theme);
-        div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
-        slot.appendChild(div);
-        const s = document.createElement('script');
-        s.src = 'https://www.google.com/recaptcha/api.js?hl=' + encodeURIComponent(hl);
-        s.async = true; s.defer = true;
-        document.body.appendChild(s);
+      function loadScript(src){
+        return new Promise((res,rej)=>{
+          const s = document.createElement('script');
+          s.src = src; s.async = true; s.defer = true;
+          s.onload = ()=>res(true); s.onerror = ()=>rej(new Error('script load fail: '+src));
+          document.body.appendChild(s);
+        });
       }
+
+      (async () => {
+        if (prov === 'hcaptcha') {
+          const div = document.createElement('div');
+          div.className = 'h-captcha';
+          div.setAttribute('data-sitekey', '4b42df4e-c26c-4860-8484-6ff88b326594');
+          div.setAttribute('data-theme', theme);
+          div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
+          slot.appendChild(div);
+          await loadScript('https://js.hcaptcha.com/1/api.js?hl=' + encodeURIComponent(hl));
+        } else if (prov === 'turnstile') {
+          const div = document.createElement('div');
+          div.className = 'cf-turnstile';
+          div.setAttribute('data-sitekey', '0x4AAAAAAB3IJl7hawb6h5Qs'); // прод-ключ
+          div.setAttribute('data-theme', theme);
+          if (variant) div.setAttribute('data-action', variant);
+          slot.appendChild(div);
+          await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' + encodeURIComponent(hl));
+        } else if (prov === 'recaptcha') {
+          const div = document.createElement('div');
+          div.className = 'g-recaptcha';
+          div.setAttribute('data-sitekey', '6LckDdQrAAAAAAD-sXansLuV3l9Yy7A3BcuThe_z');
+          div.setAttribute('data-theme', theme);
+          div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
+          slot.appendChild(div);
+          await loadScript('https://www.google.com/recaptcha/api.js?hl=' + encodeURIComponent(hl));
+        } else if (prov === 'snippet') {
+          if (!snippet) return;
+          const resp = await fetch('./snippets/' + encodeURIComponent(snippet) + '.html', { cache:'no-store' });
+          const html = await resp.text();
+          slot.innerHTML = html; // твой собственный сниппет провайдера
+        }
+      })().catch(console.error);
+
+      // простой таймаут: если iframe так и не отрисовал полезный контент — картинка уже под ним
+      setTimeout(()=>{ /* ничего не делаем — img остаётся фоном */ }, 1200);
     })();
   </script>
 </body>
