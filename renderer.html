@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Captcha Renderer</title>
+  <style>
+    html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden}
+    #bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .overlay{position:absolute;z-index:9999}
+    .cap-wrapper{
+      padding:8px;border-radius:10px;
+      background: rgba(255,255,255,0.9);
+      box-shadow:0 8px 24px rgba(0,0,0,.2)
+    }
+    .dark .cap-wrapper{ background: rgba(30,30,30,0.9); }
+    body.dark{ background:#0b0b0b; }
+  </style>
+</head>
+<body>
+  <img id="bg" alt="bg"/>
+  <div class="overlay"><div class="cap-wrapper" id="cap-slot"></div></div>
+
+  <script>
+    (function(){
+      const q = new URLSearchParams(location.search);
+      const prov = q.get('prov') || 'hcaptcha'; // 'hcaptcha' | 'turnstile' | 'recaptcha'
+      const size = q.get('size') || 'normal';   // 'normal'|'compact'|'auto'
+      const theme = q.get('theme') || 'light';  // 'light'|'dark'
+      const hl = q.get('hl') || 'en';
+      const x = parseInt(q.get('x')||'80',10);
+      const y = parseInt(q.get('y')||'120',10);
+      const bg = q.get('bg') || '';             // data:uri или абсолютный url разрешённых ассетов
+      const variant = q.get('variant') || 'checkbox'; // для turnstile: 'interactive'|'managed'
+
+      document.getElementById('bg').src = bg;
+      const overlay = document.querySelector('.overlay');
+      overlay.style.left = x+'px';
+      overlay.style.top  = y+'px';
+      if (theme === 'dark') document.body.classList.add('dark');
+
+      const slot = document.getElementById('cap-slot');
+
+      if (prov === 'hcaptcha') {
+        const div = document.createElement('div');
+        div.className = 'h-captcha';
+        div.setAttribute('data-sitekey', 'YOUR_HCAPTCHA_SITEKEY');
+        div.setAttribute('data-theme', theme);
+        div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
+        slot.appendChild(div);
+        const s = document.createElement('script');
+        s.src = 'https://js.hcaptcha.com/1/api.js?hl=' + encodeURIComponent(hl);
+        s.async = true; s.defer = true;
+        document.body.appendChild(s);
+      } else if (prov === 'turnstile') {
+        const div = document.createElement('div');
+        div.className = 'cf-turnstile';
+        div.setAttribute('data-sitekey', variant === 'interactive'
+          ? 'YOUR_TURNSTILE_SITEKEY'   // прод-ключ, который у тебя в дашборде (не тестовый)
+          : 'YOUR_TURNSTILE_SITEKEY'); // можно завести второй ключ под другой режим
+        div.setAttribute('data-theme', theme);
+        slot.appendChild(div);
+        const s = document.createElement('script');
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' + encodeURIComponent(hl);
+        s.async = true; s.defer = true;
+        document.body.appendChild(s);
+      } else if (prov === 'recaptcha') {
+        // Если решишь оживить reCAPTCHA v2 checkbox на своём домене:
+        const div = document.createElement('div');
+        div.className = 'g-recaptcha';
+        div.setAttribute('data-sitekey', 'YOUR_RECAPTCHA_SITEKEY');
+        div.setAttribute('data-theme', theme);
+        div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
+        slot.appendChild(div);
+        const s = document.createElement('script');
+        s.src = 'https://www.google.com/recaptcha/api.js?hl=' + encodeURIComponent(hl);
+        s.async = true; s.defer = true;
+        document.body.appendChild(s);
+      }
+    })();
+  </script>
+</body>
+</html>

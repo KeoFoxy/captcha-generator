@@ -1,0 +1,38 @@
+{
+  "outDir": "out",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "seed": 42,
+  "backgrounds": [
+    "https://www.wikipedia.org/"
+  ],
+  "providers": [
+    {
+      "name": "recaptcha",
+      "count": 50,
+      "size": "normal"
+    },
+    {
+      "name": "hcaptcha",
+      "count": 50,
+      "size": "normal"
+    },
+    {
+      "name": "turnstile",
+      "count": 50,
+      "size": "auto"
+    }
+  ],
+  "positions": {
+    "x": {
+      "min": 40,
+      "max": 900
+    },
+    "y": {
+      "min": 120,
+      "max": 600
+    }
+  }
+}
