@@ -121,15 +121,15 @@ async function yoloWrite(labelPath: string, cls: number, rect: {x:number;y:numbe
         const iframeSel =
           p.name === 'hcaptcha'  ? 'iframe[src*="hcaptcha"]' :
           p.name === 'turnstile' ? 'iframe[src*="challenges.cloudflare.com"]' :
-          p.name === 'recaptcha' ? 'iframe[src*="recaptcha"]' :
+          p.name === 'recaptcha' ? 'iframe[src*="api2/anchor"]' :
                                    '#cap-slot *';
         try { await page.waitForSelector(iframeSel, { timeout: CONFIG.timeouts.providerIframeMs }); } catch {}
 
         // кликаем по ЦЕНТРУ iframe (раскрыть сетку картинок у hCaptcha)
-        if ((p as any).openChallenge) {
+        if (p.openChallenge) {
           const ibox = await page.locator(iframeSel).boundingBox().catch(()=>null);
           if (ibox) {
-            await page.mouse.click(ibox.x + ibox.width/2, ibox.y + ibox.height/2, { delay: 30 });
+            await page.mouse.click(ibox.x + ibox.width/2, ibox.y + ibox.height/2);
             await page.waitForTimeout(CONFIG.timeouts.afterClickDelayMs);
           }
         }
