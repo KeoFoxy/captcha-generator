@@ -1,32 +1,37 @@
-import { chromium } from 'playwright';
+import { chromium, Page } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const RENDER_URL_BASE = 'https://keofoxy.github.io/captcha-generator/'; // <-- на файл
+const RENDER_URL_BASE = 'https://keofoxy.github.io/captcha-generator/index.html'; // ЯВНО на файл
 
 const CONFIG = {
   outDir: 'out',
   viewport: { width: 1280, height: 800 },
-  // URL-ы страниц, которые ты хочешь видеть в iframe (если нельзя встраивать — будет фолбэк-картинка)
+
+  // URL-ы для <iframe> (если сайт запретит встраивание — фон всё равно будет через картинку)
   backgrounds: [
     'https://www.wikipedia.org/',
     'https://developer.mozilla.org/',
-    // добавляй любые страницы, КОТОРЫЕ МОЖНО по правилам снимать и/или встраивать
   ],
+
+  // Включай только те провайдеры, на которые ВСТАВЛЕНЫ прод-ключи в index.html
   providers: [
-    // hCaptcha: openChallenge=true — ткнуть по чекбоксу, чаще открывается сетка картинок
-    { name: 'hcaptcha' as const,  count: 20, size: 'normal', variant: 'checkbox', openChallenge: true },
-    // Turnstile интерактивный
+    { name: 'hcaptcha'  as const, count: 20, size: 'normal', variant: 'checkbox', openChallenge: true  },
     { name: 'turnstile' as const, count: 20, size: 'auto',   variant: 'interactive', openChallenge: false },
-    // (опц.) reCAPTCHA v2 checkbox — если сделаешь прод-ключ на домен
-    { name: 'recaptcha' as const, count: 10, size: 'normal', variant: 'checkbox', openChallenge: true },
-    // (опц.) произвольный провайдер через сниппет:
-    { name: 'snippet'  as const,  count: 10, size: 'normal', variant: 'geetest', openChallenge: true },
+    { name: 'recaptcha' as const, count: 10, size: 'normal', variant: 'checkbox', openChallenge: true  },
+    // { name: 'snippet'   as const, count: 10, size: 'normal', variant: 'geetest',   openChallenge: true  },
   ],
+
   positions: { x: { min: 24, max: 980 }, y: { min: 96, max: 640 } },
   randomize: { theme: ['light','dark'] as const, languages: ['en','ru','es'], jitter: 6 },
   split: { train: 0.8, val: 0.1, test: 0.1 },
-  yolo: true
+  yolo: true,
+
+  timeouts: {
+    pageLoadMs: 45000,
+    providerIframeMs: 12000,
+    afterClickDelayMs: 900
+  }
 };
 
 type Prov = 'recaptcha'|'hcaptcha'|'turnstile'|'snippet';
@@ -36,11 +41,15 @@ function pick<T>(arr: readonly T[]): T { return arr[Math.floor(Math.random()*arr
 function rand(min:number,max:number){ return min + Math.floor(Math.random()*(max-min+1)); }
 async function ensureDir(d:string){ await fs.mkdir(d,{recursive:true}); }
 
-async function pageScreenshotDataUri(page, url: string, vw: number, vh: number) {
+async function safeGoto(page: Page, url: string, timeout: number) {
+  try { await page.goto(url, { waitUntil: 'load', timeout }); }
+  catch { try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout }); } catch {}
+  }
+}
+
+async function screenshotDataUri(page: Page, url: string, vw: number, vh: number, timeout: number) {
   await page.setViewportSize({ width: vw, height: vh });
-  try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
-  } catch {}
+  await safeGoto(page, url, timeout);
   const buf = await page.screenshot({ fullPage: true });
   return `data:image/png;base64,${buf.toString('base64')}`;
 }
@@ -49,19 +58,17 @@ async function yoloWrite(labelPath: string, cls: number, rect: {x:number;y:numbe
   const xC = (rect.x + rect.width/2) / vw;
   const yC = (rect.y + rect.height/2) / vh;
   const w = rect.width / vw; const h = rect.height / vh;
-  const line = `${cls} ${xC.toFixed(6)} ${yC.toFixed(6)} ${w.toFixed(6)} ${h.toFixed(6)}\n`;
-  await fs.writeFile(labelPath, line, 'utf-8');
+  await fs.writeFile(labelPath, `${cls} ${xC.toFixed(6)} ${yC.toFixed(6)} ${w.toFixed(6)} ${h.toFixed(6)}\n`, 'utf-8');
 }
 
 (async () => {
   await ensureDir(CONFIG.outDir);
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ viewport: CONFIG.viewport });
-  const page = await ctx.newPage();
 
-  // в отдельной вкладке снимем скрины фонов (кэшируем по url)
+  // отдельная вкладка — делаем скрин фона (для картинки)
   const bgPage = await ctx.newPage();
-  const bgDataCache = new Map<string,string>();
+  const bgCache = new Map<string,string>();
 
   let idx = 0;
 
@@ -71,13 +78,11 @@ async function yoloWrite(labelPath: string, cls: number, rect: {x:number;y:numbe
 
     for (let i=0;i<p.count;i++){
       const bgUrl = CONFIG.backgrounds[rand(0, CONFIG.backgrounds.length-1)];
-
-      // подготовим фолбэк-картинку для этого URL (1 раз на url)
-      if (!bgDataCache.has(bgUrl)) {
-        const data = await pageScreenshotDataUri(bgPage, bgUrl, CONFIG.viewport.width, CONFIG.viewport.height);
-        bgDataCache.set(bgUrl, data);
+      if (!bgCache.has(bgUrl)) {
+        const data = await screenshotDataUri(bgPage, bgUrl, CONFIG.viewport.width, CONFIG.viewport.height, CONFIG.timeouts.pageLoadMs);
+        bgCache.set(bgUrl, data);
       }
-      const bgData = bgDataCache.get(bgUrl)!;
+      const bgData = bgCache.get(bgUrl)!;
 
       const x0 = rand(CONFIG.positions.x.min, CONFIG.positions.x.max);
       const y0 = rand(CONFIG.positions.y.min, CONFIG.positions.y.max);
@@ -87,72 +92,83 @@ async function yoloWrite(labelPath: string, cls: number, rect: {x:number;y:numbe
       const theme = pick(CONFIG.randomize.theme);
       const hl = pick(CONFIG.randomize.languages);
 
-      const url = new URL(RENDER_URL_BASE);
-      url.searchParams.set('prov', p.name as any);
-      url.searchParams.set('size', p.size as any);
-      url.searchParams.set('variant', (p as any).variant || 'checkbox');
-      url.searchParams.set('theme', theme);
-      url.searchParams.set('hl', hl);
-      url.searchParams.set('x', String(x));
-      url.searchParams.set('y', String(y));
-      url.searchParams.set('bgUrl', bgUrl);   // попробуем iframe
-      url.searchParams.set('bg', bgData);     // и фолбэк-картинку
+      const page = await ctx.newPage();
 
-      if (p.name === 'snippet' && (p as any).variant) {
-        // пример: snippet=geetest → renderer загрузит ./snippets/geetest.html
-        url.searchParams.set('snippet', (p as any).variant);
-      }
+      try {
+        // короткий URL (без огромного bg=)
+        const u = new URL(RENDER_URL_BASE);
+        u.searchParams.set('prov', p.name as any);
+        u.searchParams.set('size', (p as any).size || 'normal');
+        u.searchParams.set('variant', (p as any).variant || 'checkbox');
+        u.searchParams.set('theme', theme);
+        u.searchParams.set('hl', hl);
+        u.searchParams.set('x', String(x));
+        u.searchParams.set('y', String(y));
+        u.searchParams.set('bgUrl', bgUrl);
+        // if (p.name === 'snippet' && (p as any).variant) {
+        //   u.searchParams.set('snippet', (p as any).variant);
+        // }
 
-      await page.goto(url.toString(), { waitUntil: 'load', timeout: 45000 });
+        await safeGoto(page, u.toString(), CONFIG.timeouts.pageLoadMs);
 
-      // дождаться iframe капчи
-      const sel =
-        p.name === 'hcaptcha'  ? 'iframe[src*="hcaptcha"]' :
-        p.name === 'turnstile' ? 'iframe[src*="challenges.cloudflare.com"]' :
-        p.name === 'recaptcha' ? 'iframe[src*="recaptcha"]' :
-                                 '#cap-slot *'; // для snippet ждём любой вложенный элемент
-      try { await page.waitForSelector(sel, { timeout: 10000 }); } catch {}
+        // теперь аккуратно подставляем КАРТИНКУ фона напрямую в DOM (без URL)
+        await page.evaluate((dataUri) => {
+          const img = document.getElementById('bgImg') as HTMLImageElement | null;
+          if (img) img.src = dataUri;
+        }, bgData);
 
-      // опционально «ткнуть» по капче — у hCaptcha часто открывается сетка картинок
-      if ((p as any).openChallenge) {
-        const box = await page.locator('.cap-wrapper').boundingBox();
-        if (box) {
-          await page.mouse.click(box.x + Math.min(20, box.width/2), box.y + Math.min(20, box.height/2), { delay: 30 });
-          await page.waitForTimeout(800);
+        // ждём iframe провайдера
+        const iframeSel =
+          p.name === 'hcaptcha'  ? 'iframe[src*="hcaptcha"]' :
+          p.name === 'turnstile' ? 'iframe[src*="challenges.cloudflare.com"]' :
+          p.name === 'recaptcha' ? 'iframe[src*="recaptcha"]' :
+                                   '#cap-slot *';
+        try { await page.waitForSelector(iframeSel, { timeout: CONFIG.timeouts.providerIframeMs }); } catch {}
+
+        // кликаем по ЦЕНТРУ iframe (раскрыть сетку картинок у hCaptcha)
+        if ((p as any).openChallenge) {
+          const ibox = await page.locator(iframeSel).boundingBox().catch(()=>null);
+          if (ibox) {
+            await page.mouse.click(ibox.x + ibox.width/2, ibox.y + ibox.height/2, { delay: 30 });
+            await page.waitForTimeout(CONFIG.timeouts.afterClickDelayMs);
+          }
         }
+
+        // bbox контейнера
+        const rect = await page.evaluate(() => {
+          const el = document.querySelector('.cap-wrapper') as HTMLElement | null;
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+        });
+
+        // split
+        const r = Math.random();
+        const split = r < CONFIG.split.train ? 'train' : (r < CONFIG.split.train+CONFIG.split.val ? 'val' : 'test');
+        const outDir = path.join(baseOut, split);
+        await ensureDir(outDir);
+
+        const ts = new Date().toISOString().replace(/[:.]/g,'-');
+        const stem = `${ts}_${String(idx).padStart(5,'0')}`;
+        const pngPath = path.join(outDir, `${stem}.png`);
+        const metaPath = path.join(outDir, `${stem}.json`);
+        const yoloPath = path.join(outDir, `${stem}.txt`);
+
+        await page.screenshot({ path: pngPath, fullPage: true });
+        if (CONFIG.yolo && rect) await yoloWrite(yoloPath, CLASS_ID[p.name], rect, CONFIG.viewport.width, CONFIG.viewport.height);
+
+        const meta = { provider: p.name, variant: (p as any).variant||null, size: (p as any).size||'normal',
+          theme, lang: hl, backgroundUrl: bgUrl, position: {x,y}, viewport: CONFIG.viewport, bbox: rect, createdAt: new Date().toISOString()
+        };
+        await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+
+        idx++;
+        process.stdout.write(`Saved ${pngPath}\n`);
+      } catch (e:any) {
+        console.error('[WARN]', e?.message || e);
+      } finally {
+        await page.close().catch(()=>{});
       }
-
-      // bbox контейнера
-      const rect = await page.evaluate(() => {
-        const el = document.querySelector('.cap-wrapper') as HTMLElement | null;
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-      });
-
-      // split
-      const r = Math.random();
-      const split = r < CONFIG.split.train ? 'train' : (r < CONFIG.split.train+CONFIG.split.val ? 'val' : 'test');
-      const outDir = path.join(baseOut, split);
-      await ensureDir(outDir);
-
-      const ts = new Date().toISOString().replace(/[:.]/g,'-');
-      const stem = `${ts}_${String(idx).padStart(5,'0')}`;
-      const pngPath = path.join(outDir, `${stem}.png`);
-      const metaPath = path.join(outDir, `${stem}.json`);
-      const yoloPath = path.join(outDir, `${stem}.txt`);
-
-      await page.screenshot({ path: pngPath, fullPage: true });
-      if (CONFIG.yolo && rect) {
-        await yoloWrite(yoloPath, CLASS_ID[p.name], rect, CONFIG.viewport.width, CONFIG.viewport.height);
-      }
-
-      const meta = { provider: p.name, variant: (p as any).variant||null, size: p.size, theme, lang: hl,
-        backgroundUrl: bgUrl, position: {x,y}, viewport: CONFIG.viewport, bbox: rect, createdAt: new Date().toISOString()
-      };
-      await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
-      idx++;
-      process.stdout.write(`Saved ${pngPath}\n`);
     }
   }
 
