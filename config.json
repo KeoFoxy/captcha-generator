@@ -62,9 +62,9 @@
   "disableIframeBackground": true,
   "retries": 1,
   "timeouts": {
-    "pageLoadMs": 15000,
-    "providerIframeMs": 8000,
-    "afterClickDelayMs": 800
+    "pageLoadMs": 10000,
+    "providerIframeMs": 10000,
+    "afterClickDelayMs": 3000
   },
   "rendererUrl": "https://keofoxy.github.io/captcha-generator/index.html"
 }
