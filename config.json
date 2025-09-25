@@ -11,21 +11,21 @@
   "providers": [
     {
       "name": "hcaptcha",
-      "count": 10,
+      "count": 50,
       "size": "normal",
       "variant": "checkbox",
       "openChallenge": true
     },
     {
       "name": "turnstile",
-      "count": 10,
+      "count": 50,
       "size": "auto",
       "variant": "interactive",
       "openChallenge": false
     },
     {
       "name": "recaptcha",
-      "count": 10,
+      "count": 50,
       "size": "normal",
       "variant": "checkbox",
       "openChallenge": true
