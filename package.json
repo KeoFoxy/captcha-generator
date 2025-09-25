@@ -4,11 +4,13 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p .",
-    "gen": "ts-node src/generator.ts --config config.json"
+    "gen": "npm run build && node dist/generator.js --config config.json"
   },
   "dependencies": {
     "playwright": "^1.48.2",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "picocolors": "^1.0.0",
+    "cli-progress": "^3.12.0"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",

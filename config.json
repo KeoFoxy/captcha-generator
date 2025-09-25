@@ -4,35 +4,67 @@
     "width": 1280,
     "height": 800
   },
-  "seed": 42,
   "backgrounds": [
-    "https://www.wikipedia.org/"
+    "https://www.wikipedia.org/",
+    "https://developer.mozilla.org/"
   ],
   "providers": [
     {
-      "name": "recaptcha",
-      "count": 50,
-      "size": "normal"
-    },
-    {
       "name": "hcaptcha",
-      "count": 50,
-      "size": "normal"
+      "count": 10,
+      "size": "normal",
+      "variant": "checkbox",
+      "openChallenge": true
     },
     {
       "name": "turnstile",
-      "count": 50,
-      "size": "auto"
+      "count": 10,
+      "size": "auto",
+      "variant": "interactive",
+      "openChallenge": false
+    },
+    {
+      "name": "recaptcha",
+      "count": 10,
+      "size": "normal",
+      "variant": "checkbox",
+      "openChallenge": true
     }
   ],
   "positions": {
     "x": {
-      "min": 40,
-      "max": 900
+      "min": 24,
+      "max": 980
     },
     "y": {
-      "min": 120,
-      "max": 600
+      "min": 96,
+      "max": 640
     }
-  }
+  },
+  "randomize": {
+    "theme": [
+      "light",
+      "dark"
+    ],
+    "languages": [
+      "en",
+      "ru",
+      "jp"
+    ],
+    "jitter": 6
+  },
+  "split": false,
+  "yolo": true,
+  "includeChallengeBBox": true,
+  "capture": "both",
+  "fullPage": false,
+  "concurrency": 6,
+  "disableIframeBackground": true,
+  "retries": 1,
+  "timeouts": {
+    "pageLoadMs": 15000,
+    "providerIframeMs": 8000,
+    "afterClickDelayMs": 800
+  },
+  "rendererUrl": "https://keofoxy.github.io/captcha-generator/index.html"
 }
