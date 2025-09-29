@@ -76,9 +76,12 @@
           div.className = 'cf-turnstile';
           div.setAttribute('data-sitekey', '0x4AAAAAAB3IJl7hawb6h5Qs'); // прод-ключ
           div.setAttribute('data-theme', theme);
-          if (variant) div.setAttribute('data-action', variant);
+          div.setAttribute('data-appearance', 'always');
+          div.setAttribute('data-size', size === 'compact' ? 'compact' : 'normal');
+          // if (variant) div.setAttribute('data-action', variant);
           slot.appendChild(div);
-          await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' + encodeURIComponent(hl));
+          await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js');
+          // await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' + encodeURIComponent(hl));
         } else if (prov === 'recaptcha') {
           const div = document.createElement('div');
           div.className = 'g-recaptcha';
