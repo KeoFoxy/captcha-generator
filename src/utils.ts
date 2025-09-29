@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
-import { Page } from 'playwright';
-import { Prov } from './types';
-
+import type { Page } from 'playwright';
+import type { Prov } from './types.js';
 
 export function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -17,14 +16,21 @@ export async function ensureDir(d: string) {
 
 export async function safeGoto(page: Page, url: string, timeout: number) {
   try {
+    // DOMContentLoaded быстрее и достаточно для нашего index.html
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
   } catch {}
 }
 
-export async function screenshotDataUri(page: Page, url: string, vw: number, vh: number, timeout: number, fullPage: boolean) {
+export async function screenshotDataUri(
+  page: Page,
+  url: string,
+  vw: number,
+  vh: number,
+  timeout: number,
+  fullPage: boolean
+) {
   await page.setViewportSize({ width: vw, height: vh });
   await safeGoto(page, url, timeout);
-
   const buf = await page.screenshot({ fullPage });
   return `data:image/png;base64,${buf.toString('base64')}`;
 }
@@ -42,7 +48,7 @@ export async function yoloWrite(
   await fs.writeFile(labelPath, `${cls} ${xC.toFixed(6)} ${yC.toFixed(6)} ${w.toFixed(6)} ${h.toFixed(6)}\n`, 'utf-8');
 }
 
-// Подложить фон (data:uri) в <img id="bgImg">
+// Подкладываем фон-картинку (data:uri) в <img id="bgImg">
 export async function setBackgroundImage(page: Page, dataUri: string) {
   await page.evaluate((data) => {
     const img = document.getElementById('bgImg') as HTMLImageElement | null;
@@ -50,40 +56,68 @@ export async function setBackgroundImage(page: Page, dataUri: string) {
   }, dataUri);
 }
 
-// Ждём iframe по селектору и проверяем, что у него есть bbox
-export async function waitForVisibleFrame(page: Page, selector: string, timeout: number) {
-  try {
-    await page.waitForSelector(selector, { timeout });
-    const bb = await page.locator(selector).first().boundingBox();
-    if (bb && bb.width > 0 && bb.height > 0) return bb;
-  } catch {}
+// Ждём стабильный iframe по ЛЮБОМУ селектору из массива.
+// Условия: element существует, display!=none, visibility!=hidden,
+// opacity >= minOpacity, площадь >= minArea, размеры стабильны stableMs подряд.
+export async function waitForStableFrame(
+  page: Page,
+  selectors: string[] | string,
+  {
+    timeout = 10000,
+    minArea = 2500,
+    minOpacity = 0.98,
+    stableMs = 300
+  }: { timeout?: number; minArea?: number; minOpacity?: number; stableMs?: number } = {}
+) {
+  const union = Array.isArray(selectors) ? selectors.join(', ') : selectors;
+  const deadline = Date.now() + timeout;
 
+  try { await page.waitForSelector(union, { timeout }); } catch { return null; }
+
+  while (Date.now() < deadline) {
+    const loc = page.locator(union).first();
+    const bb = await loc.boundingBox().catch(() => null);
+    if (!bb) { await page.waitForTimeout(60); continue; }
+
+    const area = bb.width * bb.height;
+    const style = await loc.evaluate((el) => {
+      const s = window.getComputedStyle(el as HTMLElement);
+      return { opacity: parseFloat(s.opacity || '1'), vis: s.visibility, disp: s.display };
+    }).catch(() => null);
+
+    const visible = !!style && style.disp !== 'none' && style.vis !== 'hidden' && (style.opacity ?? 1) >= minOpacity;
+
+    if (visible && area >= minArea) {
+      const until = Date.now() + stableMs;
+      const w = bb.width, h = bb.height;
+      let ok = true;
+      while (Date.now() < until) {
+        await page.waitForTimeout(60);
+        const b2 = await loc.boundingBox().catch(() => null);
+        if (!b2 || Math.abs(b2.width - w) > 1 || Math.abs(b2.height - h) > 1) { ok = false; break; }
+      }
+      if (ok) return bb;
+    }
+    await page.waitForTimeout(60);
+  }
   return null;
 }
 
-// bbox внешней обёртки (наш контейнер .cap-wrapper)
+// bbox нашего контейнера .cap-wrapper
 export async function getWrapperBBox(page: Page) {
   return page.evaluate(() => {
     const el = document.querySelector('.cap-wrapper') as HTMLElement | null;
-
     if (!el) return null;
-    
     const r = el.getBoundingClientRect();
-
-    return {
-      x: Math.round(r.left),
-      y: Math.round(r.top),
-      width: Math.round(r.width),
-      height: Math.round(r.height),
-    };
+    return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
   });
 }
 
-// bbox челленджа (внутренний iframe) — если есть
+// bbox iframe-челленджа (если есть)
 export async function getChallengeBBox(page: Page, prov: Prov) {
   const sel =
     prov === 'hcaptcha'
-      ? 'iframe[src*="hcaptcha"][title*="challenge"], iframe[title*="hCaptcha challenge"]'
+      ? 'iframe[title*="challenge" i][src*="hcaptcha.com" i], iframe[title*="hcaptcha challenge" i]'
       : prov === 'recaptcha'
       ? 'iframe[src*="api2/bframe"]'
       : '';
@@ -91,13 +125,11 @@ export async function getChallengeBBox(page: Page, prov: Prov) {
 
   const lf = page.locator(sel).first();
   const bb = await lf.boundingBox().catch(() => null);
-  
   if (!bb) return null;
+  return { x: Math.round(bb.x), y: Math.round(bb.y), width: Math.round(bb.width), height: Math.round(bb.height) };
+}
 
-  return {
-    x: Math.round(bb.x),
-    y: Math.round(bb.y),
-    width: Math.round(bb.width),
-    height: Math.round(bb.height),
-  };
+// двойной requestAnimationFrame — помочь добить css-анимации
+export async function waitNextPaint(page: Page) {
+  await page.evaluate(() => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 }

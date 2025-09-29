@@ -1,7 +1,7 @@
 import path from 'path';
 import pc from 'picocolors';
 import { promises as fs } from 'fs';
-import { Page } from 'playwright';
+import type { Page } from 'playwright';
 
 import {
   Config,
@@ -9,24 +9,25 @@ import {
   Theme,
   CLASS_ID,
   Task,
-} from './types';
+} from './types.js';
 import {
   pick,
   rand,
   safeGoto,
   setBackgroundImage,
-  waitForVisibleFrame,
+  waitForStableFrame,
   getWrapperBBox,
   getChallengeBBox,
   yoloWrite,
-} from './utils';
-import { prepareOutDir } from './tasks';
-import { getProviderSelectors } from './selectors';
+  waitNextPaint,
+} from './utils.js';
+import { prepareOutDir } from './tasks.js';
+import { getProviderSelectors } from './selectors.js';
 import {
   tryOpenHcaptcha,
   tryOpenRecaptchaV2,
   tryOpenTurnstile,
-} from './openers';
+} from './openers.js';
 
 export async function runOne(
   page: Page,
@@ -61,15 +62,18 @@ export async function runOne(
   await setBackgroundImage(page, bgData);
 
   const { widgetFrame, challengeFrame } = getProviderSelectors(t.prov);
-  const widgetBB = await waitForVisibleFrame(page, widgetFrame, cfg.timeouts.providerIframeMs);
 
-  if (!widgetBB) {
-    if (cfg.requireWidget) {
-      console.error(pc.yellow(`[skip] widget not detected for ${t.prov}`));
-      return 0;
-    } else {
-      console.warn(pc.yellow(`[warn] widget not detected for ${t.prov}, but requireWidget=false`));
-    }
+  // Надёжно ждём стабильный виджет (не полупрозрачный, не прыгающий)
+  const widgetBB = await waitForStableFrame(page, widgetFrame, {
+    timeout: cfg.timeouts.providerIframeMs,
+    minArea: 2500,
+    minOpacity: 0.95,
+    stableMs: 280
+  });
+
+  if (!widgetBB && cfg.requireWidget) {
+    console.error(pc.yellow(`[skip] widget not detected for ${t.prov}`));
+    return 0;
   }
 
   const baseOut = await prepareOutDir(cfg, t.prov);
@@ -78,11 +82,22 @@ export async function runOne(
 
   let framesSaved = 0;
 
-  // PRE
+  // --- PRE (дожимаем виджет ещё чуть-чуть и снимаем)
   if (cfg.capture === 'pre' || cfg.capture === 'both') {
     if (!widgetBB && cfg.requireWidget) {
       // skip
     } else {
+      await waitForStableFrame(page, widgetFrame, {
+        timeout: 1500,
+        minArea: 2200,
+        minOpacity: 0.95,
+        stableMs: 220
+      }).catch(() => null);
+
+      // добить анимации
+      await waitNextPaint(page);
+      await page.waitForTimeout(150);
+
       const rect = await getWrapperBBox(page);
       const prePng = path.join(baseOut, `${stemBase}_pre.png`);
       const preMeta = path.join(baseOut, `${stemBase}_pre.json`);
@@ -110,7 +125,7 @@ export async function runOne(
     }
   }
 
-  // POST
+  // --- POST
   if (cfg.capture === 'post' || cfg.capture === 'both') {
     let opened = false;
     if (t.pCfg.openChallenge) {
@@ -119,18 +134,29 @@ export async function runOne(
       else if (t.prov === 'turnstile') opened = await tryOpenTurnstile(page, cfg.timeouts.afterClickDelayMs, cfg.timeouts.providerIframeMs);
     }
 
-    if (cfg.requireChallengeForPost && challengeFrame) {
-      const chBB = await waitForVisibleFrame(page, challengeFrame, cfg.timeouts.providerIframeMs);
+    if (cfg.requireChallengeForPost && challengeFrame?.length) {
+      const chBB = await waitForStableFrame(page, challengeFrame, {
+        timeout: cfg.timeouts.providerIframeMs,
+        minArea: 12000,
+        minOpacity: 0.95,
+        stableMs: 300
+      });
       if (!chBB) {
         console.error(pc.yellow(`[skip] challenge not detected for ${t.prov} (post)`));
-      } else {
-        await savePost(baseOut, stemBase, page, cfg, t.prov, x, y, theme, hl, bgUrl, opened);
-        framesSaved++;
+        return framesSaved;
       }
     } else {
-      await savePost(baseOut, stemBase, page, cfg, t.prov, x, y, theme, hl, bgUrl, opened);
-      framesSaved++;
+      // иначе хотя бы стабилизируем виджет ещё раз
+      await waitForStableFrame(page, widgetFrame, {
+        timeout: 1500, minArea: 2500, minOpacity: 0.95, stableMs: 200
+      }).catch(()=>null);
     }
+
+    await waitNextPaint(page);
+    await page.waitForTimeout(200);
+
+    await savePost(baseOut, stemBase, page, cfg, t.prov, x, y, theme, hl, bgUrl, opened, t.pCfg.variant, t.pCfg.size);
+    framesSaved++;
   }
 
   return framesSaved;
@@ -147,23 +173,26 @@ async function savePost(
   theme: string,
   hl: string,
   bgUrl: string,
-  opened: boolean
+  opened: boolean,
+  variant?: string,
+  size?: string
 ) {
   const rect = await getWrapperBBox(page);
-  const postPng = path.join(baseOut, `${stemBase}_post.png`);
+  const postPng  = path.join(baseOut, `${stemBase}_post.png`);
   const postMeta = path.join(baseOut, `${stemBase}_post.json`);
   const postYolo = path.join(baseOut, `${stemBase}_post.txt`);
   const challengeRect = cfg.includeChallengeBBox ? await getChallengeBBox(page, prov) : null;
 
   await page.screenshot({ path: postPng, fullPage: cfg.fullPage });
+
   if (cfg.yolo && rect) {
     await yoloWrite(postYolo, CLASS_ID[prov], rect, cfg.viewport.width, cfg.viewport.height);
   }
 
   await fs.writeFile(postMeta, JSON.stringify({
     provider: prov,
-    variant: null,
-    size: 'normal',
+    variant: variant ?? null,
+    size: size || 'normal',
     state: 'post',
     challengeOpened: opened,
     challengeBBox: challengeRect,

@@ -1,24 +1,38 @@
 import { Prov } from './types';
 
-// Селекторы для проверки наличия виджета и челленджа
 export function getProviderSelectors(prov: Prov): {
-  widgetFrame: string;
-  challengeFrame?: string;
+  widgetFrame: string[];
+  challengeFrame?: string[];
 } {
-  if (prov === 'hcaptcha') {
-    return {
-      widgetFrame: 'iframe[src*="hcaptcha"]',
-      challengeFrame: 'iframe[src*="hcaptcha"][title*="challenge"], iframe[title*="hCaptcha challenge"]'
-    };
+  switch (prov) {
+    case 'hcaptcha':
+      return {
+        widgetFrame: [
+          'iframe[title*="hcaptcha" i]',
+          'iframe[src*="hcaptcha.com" i]'
+        ],
+        challengeFrame: [
+          'iframe[title*="hcaptcha challenge" i]',
+          'iframe[title*="challenge" i][src*="hcaptcha.com" i]'
+        ]
+      };
+    case 'recaptcha':
+      return {
+        widgetFrame: [
+          'iframe[src*="api2/anchor"]',
+          'iframe[title="reCAPTCHA"]'
+        ],
+        challengeFrame: [
+          'iframe[src*="api2/bframe"]'
+        ]
+      };
+    case 'turnstile':
+      return {
+        widgetFrame: [
+          'iframe[src*="challenges.cloudflare.com" i]',
+          'iframe[id^="cf-chl-widget-"]',
+          'iframe[title*="cloudflare security" i]'
+        ]
+      };
   }
-  if (prov === 'recaptcha') {
-    return {
-      widgetFrame: 'iframe[src*="api2/anchor"]',
-      challengeFrame: 'iframe[src*="api2/bframe"]'
-    };
-  }
-  // turnstile
-  return {
-    widgetFrame: 'iframe[src*="challenges.cloudflare.com"]',
-  };
 }
