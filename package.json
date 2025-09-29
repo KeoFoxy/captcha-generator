@@ -1,7 +1,7 @@
 {
   "name": "captcha-screenshot-generator",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "build": "tsc -p .",
     "gen": "npm run build && node dist/generator.js --config config.json"
