@@ -20,6 +20,5 @@ export function getProviderSelectors(prov: Prov): {
   // turnstile
   return {
     widgetFrame: 'iframe[src*="challenges.cloudflare.com"]',
-    // challengeFrame: (обычно нет отдельного)
   };
 }

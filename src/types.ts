@@ -7,12 +7,15 @@ export type Theme = 'light' | 'dark';
 // Режим съёмки
 export type CaptureMode = 'pre' | 'post' | 'both';
 
+export type Split = false | { train: number; val: number; test: number };
+
 // Базовые типы
 export interface Viewport { width: number; height: number }
 export interface XYRange { min: number; max: number }
 export interface Positions { x: XYRange; y: XYRange }
 export interface Timeouts { pageLoadMs: number; providerIframeMs: number; afterClickDelayMs: number }
 export interface Randomize { theme: Theme[]; languages: string[]; jitter: number }
+export interface Task { prov: Prov; pCfg: ProviderCfg; idx: number }
 
 // Конфиг одного провайдера
 export interface ProviderCfg {
@@ -23,10 +26,6 @@ export interface ProviderCfg {
   openChallenge?: boolean;
 }
 
-// Разбивка на подпапки или выключено
-export type Split = false | { train: number; val: number; test: number };
-
-// Главный конфиг
 export interface Config {
   outDir: string;
   viewport: Viewport;
@@ -48,7 +47,6 @@ export interface Config {
   requireChallengeForPost: boolean;
 }
 
-// Классы для YOLO (можешь поменять порядок под себя)
 export const CLASS_ID: Record<Prov, number> = {
   recaptcha: 0,
   hcaptcha: 1,

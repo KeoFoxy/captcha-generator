@@ -3,14 +3,30 @@ import pc from 'picocolors';
 import { promises as fs } from 'fs';
 import { Page } from 'playwright';
 
-import { Config, Prov, Theme, CLASS_ID } from './types';
 import {
-  pick, rand, safeGoto, setBackgroundImage, waitForVisibleFrame,
-  getWrapperBBox, getChallengeBBox, yoloWrite
+  Config,
+  Prov,
+  Theme,
+  CLASS_ID,
+  Task,
+} from './types';
+import {
+  pick,
+  rand,
+  safeGoto,
+  setBackgroundImage,
+  waitForVisibleFrame,
+  getWrapperBBox,
+  getChallengeBBox,
+  yoloWrite,
 } from './utils';
-import { Task, prepareOutDir } from './tasks';
+import { prepareOutDir } from './tasks';
 import { getProviderSelectors } from './selectors';
-import { tryOpenHcaptcha, tryOpenRecaptchaV2, tryOpenTurnstile } from './openers';
+import {
+  tryOpenHcaptcha,
+  tryOpenRecaptchaV2,
+  tryOpenTurnstile,
+} from './openers';
 
 export async function runOne(
   page: Page,

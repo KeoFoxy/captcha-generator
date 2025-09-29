@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { Config, ProviderCfg, Viewport, Positions, Randomize, Timeouts } from './types';
 
-// Берём значение аргумента CLI (например, --config path/to.json)
+
 export function getArg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : def;
@@ -53,8 +53,12 @@ function applyDefaults(partial: Partial<Config>): Config {
   };
 
   // Минимальная валидация
-  if (!cfg.backgrounds.length) throw new Error('config.backgrounds must be a non-empty array');
-  if (!cfg.providers.length) throw new Error('config.providers must be a non-empty array');
+  if (!cfg.backgrounds.length) {
+    throw new Error('config.backgrounds must be a non-empty array');
+  }
+  if (!cfg.providers.length) {
+    throw new Error('config.providers must be a non-empty array');
+  }
 
   for (const p of cfg.providers) {
     if (!isProv(p.name)) throw new Error('providers[].name must be recaptcha|hcaptcha|turnstile');
