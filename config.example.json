@@ -61,6 +61,8 @@
   "concurrency": 6,
   "disableIframeBackground": true,
   "retries": 1,
+  "requireWidget": true,
+  "requireChallengeForPost": true,
   "timeouts": {
     "pageLoadMs": 15000,
     "providerIframeMs": 8000,
